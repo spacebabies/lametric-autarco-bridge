@@ -88,10 +88,20 @@ def get_source():
     )
 
 
-async def main():
+async def stream_modbus_to_stdout(source):
+    """Print Modbus readings without requiring or contacting a LaMetric device."""
+    async for reading in source.stream():
+        print(f"{reading.timestamp} {reading.power_watts:g} W", flush=True)
+
+
+async def main(modbus_only=False):
     source = get_source()
 
     async with source:
+        if modbus_only:
+            await stream_modbus_to_stdout(source)
+            return
+
         state = {
             "last_reading_time": time.time(),
             "stale_alert_sent": False,
@@ -126,16 +136,25 @@ async def main():
             task_group.create_task(timeout_monitor())
 
 
-if __name__ == "__main__":
+def parse_args(args=None):
     parser = argparse.ArgumentParser(description="LaMetric Autarco/Solis Bridge")
     parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
     )
-    parser.parse_args()
+    parser.add_argument(
+        "--modbus-only",
+        action="store_true",
+        help="stream Modbus readings to stdout without contacting LaMetric",
+    )
+    return parser.parse_args(args)
+
+
+if __name__ == "__main__":
+    args = parse_args()
 
     try:
-        asyncio.run(main())
+        asyncio.run(main(modbus_only=args.modbus_only))
     except KeyboardInterrupt:
         logger.info("Script stopped by user.")

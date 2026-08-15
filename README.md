@@ -87,6 +87,16 @@ source .venv/bin/activate
 python bridge.py
 ```
 
+To test only the USB/Modbus connection, without configuring or contacting a
+LaMetric device:
+
+```bash
+python bridge.py --modbus-only
+```
+
+This continuously writes timestamped power readings to stdout. Stop it with
+`Ctrl-C`. Only the `SOLIS_MODBUS_*` settings are used in this mode.
+
 If the serial adapter is not accessible:
 
 ```bash

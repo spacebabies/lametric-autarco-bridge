@@ -1,8 +1,9 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 import bridge
+from sources.base import GenerationReading
 from sources.solis_modbus import SolisModbusSource
 
 
@@ -41,3 +42,33 @@ def test_get_source_rejects_invalid_int(monkeypatch):
         bridge.get_source()
 
     assert exc_info.value.code == 1
+
+
+def test_parse_args_enables_modbus_only():
+    assert bridge.parse_args(["--modbus-only"]).modbus_only is True
+
+
+@pytest.mark.asyncio
+async def test_modbus_only_streams_to_stdout_without_lametric(capsys):
+    reading = GenerationReading(power_watts=1234.5, timestamp="2026-08-15T12:00:00+00:00")
+
+    class FakeSource:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        async def stream(self):
+            yield reading
+
+    with (
+        patch("bridge.get_source", return_value=FakeSource()),
+        patch("bridge.push_to_lametric", new=AsyncMock()) as push,
+        patch("bridge.push_to_lametric_stale", new=AsyncMock()) as push_stale,
+    ):
+        await bridge.main(modbus_only=True)
+
+    assert capsys.readouterr().out == "2026-08-15T12:00:00+00:00 1234.5 W\n"
+    push.assert_not_awaited()
+    push_stale.assert_not_awaited()
