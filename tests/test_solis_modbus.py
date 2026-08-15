@@ -1,6 +1,28 @@
 import pytest
+from unittest.mock import AsyncMock, Mock
 
+import sources.solis_modbus as solis_modbus
 from sources.solis_modbus import SolisModbusSource
+
+
+class RecentModbusClient:
+    def __init__(self):
+        self.read = AsyncMock(
+            return_value=Mock(registers=[0, 1234], isError=Mock(return_value=False)),
+        )
+
+    async def read_holding_registers(self, address, *, count=1, device_id=1):
+        return await self.read(address=address, count=count, device_id=device_id)
+
+
+class LegacyModbusClient:
+    def __init__(self):
+        self.read = AsyncMock(
+            return_value=Mock(registers=[0, 1234], isError=Mock(return_value=False)),
+        )
+
+    async def read_holding_registers(self, address, count=1, slave=1):
+        return await self.read(address=address, count=count, slave=slave)
 
 
 def test_decode_single_register():
@@ -27,3 +49,35 @@ def test_decode_rejects_invalid_byteorder():
 def test_decode_rejects_invalid_register_value():
     with pytest.raises(ValueError):
         SolisModbusSource.decode_registers([0x10000])
+
+
+@pytest.mark.asyncio
+async def test_read_power_uses_device_id_with_recent_pymodbus_api(monkeypatch):
+    monkeypatch.setattr(solis_modbus, "AsyncModbusSerialClient", RecentModbusClient)
+    source = SolisModbusSource(register=3004, count=2, slave_id=7)
+    source.client = RecentModbusClient()
+
+    reading = await source.read_power()
+
+    assert reading.power_watts == 1234
+    source.client.read.assert_awaited_once_with(
+        address=3004,
+        count=2,
+        device_id=7,
+    )
+
+
+@pytest.mark.asyncio
+async def test_read_power_uses_slave_with_legacy_pymodbus_api(monkeypatch):
+    monkeypatch.setattr(solis_modbus, "AsyncModbusSerialClient", LegacyModbusClient)
+    source = SolisModbusSource(register=3004, count=2, slave_id=7)
+    source.client = LegacyModbusClient()
+
+    reading = await source.read_power()
+
+    assert reading.power_watts == 1234
+    source.client.read.assert_awaited_once_with(
+        address=3004,
+        count=2,
+        slave=7,
+    )

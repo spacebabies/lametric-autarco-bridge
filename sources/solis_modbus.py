@@ -1,5 +1,6 @@
 """Solis/Ginlong Modbus RTU ingress module."""
 import asyncio
+import inspect
 import logging
 import sys
 from datetime import datetime, timezone
@@ -125,10 +126,12 @@ class SolisModbusSource:
         if self.client is None:
             raise RuntimeError("Modbus client is not connected")
 
+        parameters = inspect.signature(self.client.read_holding_registers).parameters
+        unit_argument = "device_id" if "device_id" in parameters else "slave"
         result = await self.client.read_holding_registers(
             address=self.register,
             count=self.count,
-            slave=self.slave_id,
+            **{unit_argument: self.slave_id},
         )
 
         if result.isError():
