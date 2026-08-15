@@ -80,6 +80,88 @@ Common Modbus defaults:
 - `SOLIS_MODBUS_REGISTER=3004`
 - `SOLIS_MODBUS_REGISTER_COUNT=2`
 
+### Finding The USB RS485 Adapter
+
+Do not select an adapter from its `/dev/ttyUSB0` number. That number is assigned
+when devices are detected and may change after a reboot or when another USB
+serial device is connected. P1 smart-meter cables, console cables and RS485
+adapters can also use the same FTDI USB chip, so even identical `lsusb` entries
+do not prove which cable is which.
+
+The most reliable procedure is to identify the adapter while it is the only USB
+serial cable being connected:
+
+1. Stop programs which use any USB serial cables, then disconnect the other
+   serial cables temporarily. If that is impractical, record the list before
+   connecting the RS485 adapter.
+
+   ```bash
+   ls -l /dev/serial/by-id/ 2>/dev/null
+   ```
+
+2. Connect the USB RS485 adapter and run the command again. The newly appearing
+   entry is the adapter. For example:
+
+   ```text
+   usb-FTDI_FT232R_USB_UART_BG03OE3O-if00-port0 -> ../../ttyUSB0
+   ```
+
+   The part before `->` is the stable device name. It will be different for
+   each adapter; copy it exactly from your own output.
+
+3. Put its complete path in `lametric-autarco-bridge.env`:
+
+   ```dotenv
+   SOLIS_MODBUS_DEVICE=/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG03OE3O-if00-port0
+   SOLIS_MODBUS_BAUDRATE=9600
+   SOLIS_MODBUS_SLAVE_ID=1
+   ```
+
+4. Reconnect the other cables and confirm that the selected symlink still
+   resolves to an existing device:
+
+   ```bash
+   readlink -f /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG03OE3O-if00-port0
+   ```
+
+   Output such as `/dev/ttyUSB0` or `/dev/ttyUSB1` is expected. It does not
+   matter if that final number changes later: the configured `by-id` path stays
+   associated with the adapter's USB serial number.
+
+5. Test only the selected adapter and Modbus connection:
+
+   ```bash
+   python bridge.py --modbus-only
+   ```
+
+   This bridge only reads Modbus registers. A wrong serial device normally
+   results in timeouts or invalid responses, but it is still better to identify
+   the cable physically instead of trying every serial port on the system.
+
+For additional diagnosis, list all USB devices and serial ports:
+
+```bash
+lsusb
+ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
+ls -l /dev/serial/by-id/ 2>/dev/null
+```
+
+An RS485 adapter may appear as an FTDI, CH340/CH341, CP210x or Prolific device.
+USB vendor/product IDs from `lsusb`, such as `0403:6001`, do not need separate
+env settings. If no new serial device appears, follow kernel messages while
+reconnecting the adapter:
+
+```bash
+sudo dmesg --follow
+```
+
+The kernel should report a device such as `ttyUSB0` or `ttyACM0`. Its USB
+properties can be inspected with:
+
+```bash
+udevadm info --query=property --name=/dev/ttyUSB0
+```
+
 ## Run Manually
 
 ```bash
