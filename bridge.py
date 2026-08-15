@@ -12,7 +12,7 @@ __version__ = "0.1.0"
 load_dotenv("lametric-autarco-bridge.env")
 
 from sinks.lametric import push_to_lametric, push_to_lametric_stale
-from sources.solis_modbus import SolisModbusSource
+from sources.solis_modbus import ModbusConnectionError, SolisModbusSource
 
 logging.basicConfig(
     level=logging.INFO,
@@ -158,3 +158,6 @@ if __name__ == "__main__":
         asyncio.run(main(modbus_only=args.modbus_only))
     except KeyboardInterrupt:
         logger.info("Script stopped by user.")
+    except ModbusConnectionError as exc:
+        logger.error("Solis Modbus: %s", exc)
+        sys.exit(1)

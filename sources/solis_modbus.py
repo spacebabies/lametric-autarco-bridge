@@ -16,6 +16,10 @@ from sources.base import GenerationReading
 logger = logging.getLogger(__name__)
 
 
+class ModbusConnectionError(RuntimeError):
+    """Raised when the inverter does not answer the initial Modbus request."""
+
+
 class SolisModbusSource:
     """
     Reads realtime generation from a Solis/Ginlong inverter over RS485 Modbus RTU.
@@ -96,7 +100,17 @@ class SolisModbusSource:
             sys.exit(1)
             return
 
-        reading = await self.read_power()
+        try:
+            reading = await self.read_power()
+        except Exception as exc:
+            self.client.close()
+            raise ModbusConnectionError(
+                f"No valid Modbus response from {self.device} "
+                f"(slave {self.slave_id}, register {self.register}, {self.baudrate} baud). "
+                "Check the RS485 A/B wiring, adapter type, serial settings, and slave ID. "
+                f"Details: {exc}"
+            ) from exc
+
         logger.info("Solis Modbus: Connection successful. Current output: %.0f W", reading.power_watts)
 
     async def stream(self) -> AsyncIterator[GenerationReading]:

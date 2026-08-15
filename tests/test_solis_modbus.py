@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 
 import sources.solis_modbus as solis_modbus
-from sources.solis_modbus import SolisModbusSource
+from sources.solis_modbus import ModbusConnectionError, SolisModbusSource
 
 
 class RecentModbusClient:
@@ -23,6 +23,21 @@ class LegacyModbusClient:
 
     async def read_holding_registers(self, address, count=1, slave=1):
         return await self.read(address=address, count=count, slave=slave)
+
+
+class FailingModbusClient:
+    instance = None
+
+    def __init__(self, **kwargs):
+        self.closed = False
+        self.read_holding_registers = AsyncMock(side_effect=TimeoutError("no response"))
+        type(self).instance = self
+
+    async def connect(self):
+        return True
+
+    def close(self):
+        self.closed = True
 
 
 def test_decode_single_register():
@@ -81,3 +96,26 @@ async def test_read_power_uses_slave_with_legacy_pymodbus_api(monkeypatch):
         count=2,
         slave=7,
     )
+
+
+@pytest.mark.asyncio
+async def test_connect_reports_request_context_and_closes_client(monkeypatch):
+    monkeypatch.setattr(solis_modbus, "AsyncModbusSerialClient", FailingModbusClient)
+    source = SolisModbusSource(
+        device="/dev/serial/by-id/test-adapter",
+        baudrate=9600,
+        slave_id=7,
+        register=3004,
+    )
+
+    with pytest.raises(ModbusConnectionError) as exc_info:
+        await source.connect()
+
+    message = str(exc_info.value)
+    assert "/dev/serial/by-id/test-adapter" in message
+    assert "slave 7" in message
+    assert "register 3004" in message
+    assert "9600 baud" in message
+    assert "RS485 A/B wiring" in message
+    assert "no response" in message
+    assert FailingModbusClient.instance.closed is True
